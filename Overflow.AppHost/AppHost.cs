@@ -10,4 +10,10 @@ var keycloak = builder.AddKeycloak(
     .WithDataVolume("keycloak-data");//指定数据卷,即使关闭容器数据也会保留
 
 
+builder.AddProject<Projects.QuetionService>("quetionservice");
+
+
+builder.AddProject<Projects.WebApplication1>("webapplication1");
+
+
 builder.Build().Run();
