@@ -1,27 +1,28 @@
-﻿using Microsoft.AspNetCore.Authorization;
+﻿using Contracts;
+using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
 using Questionservice.Data;
 using Questionservice.DTOs;
 using Questionservice.Models;
+using Questionservice.Services;
 using System.Security.Claims;
+using Wolverine;
 
 namespace Questionservice.Controllers
 {
     [ApiController]//自动验证使用的每个端点
     [Route("[controller]")]
-    public class QuestionsController(QuestionDbContext db) : ControllerBase
+    public class QuestionsController(QuestionDbContext db,IMessageBus bus,TagService tagService) : ControllerBase
     {
         [Authorize]
         [HttpPost]
         public async Task<ActionResult<Question>> CreateQuestion(CreateQuestionDto dto)
         {
-            var validTags = await db.Tags.Where(x => dto.Tags.Contains(x.Slug)).ToListAsync();
-
-            var missing = dto.Tags.Except(validTags.Select(x => x.Slug)).ToList();
-
-            if (missing.Count() != 0)
-                return BadRequest($"不可用的标签有：{string.Join(",", missing)}");
+            if (!await tagService.AreTagsValidAsync(dto.Tags))
+            {
+                return BadRequest("包含无效标签");
+            }
 
             var userId = User.FindFirstValue(ClaimTypes.NameIdentifier);
             var name = User.FindFirstValue("name");
@@ -41,6 +42,8 @@ namespace Questionservice.Controllers
 
             db.Questions.Add(question);
             await db.SaveChangesAsync();
+
+            await bus.PublishAsync(new QuestionCreated(question.Id, question.Title, question.Content,question.CreateAt,question.TagSlugs));
 
             return Created($"/questions/{question.Id}", question); //返回201状态码，并在响应头中包含新创建资源的URL
         }
@@ -88,12 +91,10 @@ namespace Questionservice.Controllers
             var userId = User.FindFirstValue(ClaimTypes.NameIdentifier);
             if (userId != question.AskerId) return Forbid();
 
-            var validTags = await db.Tags.Where(x => dto.Tags.Contains(x.Slug)).ToListAsync();
-
-            var missing = dto.Tags.Except(validTags.Select(x => x.Slug)).ToList();
-
-            if (missing.Count() != 0)
-                return BadRequest($"不可用的标签有：{string.Join(",", missing)}");
+            if (!await tagService.AreTagsValidAsync(dto.Tags))
+            {
+                return BadRequest("包含无效标签");
+            }
 
             question.Title = dto.Title;
             question.Content = dto.Content;
@@ -101,6 +102,9 @@ namespace Questionservice.Controllers
             question.UpdateAt = DateTime.UtcNow;
 
             await db.SaveChangesAsync();
+
+            await bus.PublishAsync(new QuestionUpdated(question.Id, question.Title, question.Content, question.TagSlugs.ToArray()));
+
             return NoContent();
         }
 
@@ -116,6 +120,9 @@ namespace Questionservice.Controllers
 
             db.Questions.Remove(question);
             await db.SaveChangesAsync();
+
+            await bus.PublishAsync(new QuestionDeleted(question.Id));
+
             return NoContent();
 
         }

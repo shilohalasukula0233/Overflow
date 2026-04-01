@@ -1,4 +1,11 @@
 <Solution>
+  <Folder Name="/common/">
+    <Project Path="Contracts/Contracts.csproj" Id="a69c1336-2c30-4065-bbb9-a7707e232bde" />
+  </Folder>
+  <Folder Name="/services/">
+    <Project Path="Questionservice/Questionservice.csproj" />
+    <Project Path="SearchService/SearchService.csproj" />
+  </Folder>
   <Project Path="Overflow.AppHost/Overflow.AppHost.csproj" />
   <Project Path="Overflow.ServiceDefaults/Overflow.ServiceDefaults.csproj" />
 </Solution>

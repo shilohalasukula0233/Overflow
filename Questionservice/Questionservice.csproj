@@ -17,9 +17,11 @@
       <IncludeAssets>runtime; build; native; contentfiles; analyzers; buildtransitive</IncludeAssets>
     </PackageReference>
     <PackageReference Include="Microsoft.VisualStudio.Azure.Containers.Tools.Targets" Version="1.23.0" />
+    <PackageReference Include="WolverineFx.RabbitMQ" Version="4.7.0" />
   </ItemGroup>
 
   <ItemGroup>
+    <ProjectReference Include="..\Contracts\Contracts.csproj" />
     <ProjectReference Include="..\Overflow.ServiceDefaults\Overflow.ServiceDefaults.csproj" />
   </ItemGroup>
 
