@@ -1,4 +1,5 @@
 ﻿using System.ComponentModel.DataAnnotations;
+using Questionservice.Models;
 
 namespace Questionservice.Models
 {
@@ -16,9 +17,13 @@ namespace Questionservice.Models
         public required string AskerDisplayName { get; set; }
         public DateTime CreateAt { get; set; } = DateTime.UtcNow;
         public DateTime? UpdateAt { get; set; }
-        public int viewCount { get; set; }
+        public int ViewCount { get; set; }
         public List<string> TagSlugs { get; set; } = [];
         public bool HasAcceptedAnswer { get; set; }
         public int Votes { get; set; }
+        public int AnswerCount { get; set; }
+
+        // navigation properties
+        public List<Answer> Answers { get; set; } = [];
     }
 }

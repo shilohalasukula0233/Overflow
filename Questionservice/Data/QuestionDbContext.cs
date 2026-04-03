@@ -11,6 +11,7 @@ namespace Questionservice.Data
 
         public DbSet<Question> Questions { get; set; } = null!;
         public DbSet<Tag> Tags { get; set; } = null!;
+        public DbSet<Answer> Answers { get; set; }
 
         protected override void OnModelCreating(ModelBuilder modelBuilder)
         {

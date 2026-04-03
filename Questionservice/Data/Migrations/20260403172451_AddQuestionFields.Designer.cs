@@ -3,6 +3,7 @@ using System;
 using System.Collections.Generic;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Infrastructure;
+using Microsoft.EntityFrameworkCore.Migrations;
 using Microsoft.EntityFrameworkCore.Storage.ValueConversion;
 using Npgsql.EntityFrameworkCore.PostgreSQL.Metadata;
 using Questionservice.Data;
@@ -12,9 +13,11 @@ using Questionservice.Data;
 namespace Questionservice.Data.Migrations
 {
     [DbContext(typeof(QuestionDbContext))]
-    partial class QuestionDbContextModelSnapshot : ModelSnapshot
+    [Migration("20260403172451_AddQuestionFields")]
+    partial class AddQuestionFields
     {
-        protected override void BuildModel(ModelBuilder modelBuilder)
+        /// <inheritdoc />
+        protected override void BuildTargetModel(ModelBuilder modelBuilder)
         {
 #pragma warning disable 612, 618
             modelBuilder

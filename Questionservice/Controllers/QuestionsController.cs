@@ -13,7 +13,7 @@ namespace Questionservice.Controllers
 {
     [ApiController]//自动验证使用的每个端点
     [Route("[controller]")]
-    public class QuestionsController(QuestionDbContext db,IMessageBus bus,TagService tagService) : ControllerBase
+    public class QuestionsController(QuestionDbContext db, IMessageBus bus, TagService tagService) : ControllerBase
     {
         [Authorize]
         [HttpPost]
@@ -27,7 +27,8 @@ namespace Questionservice.Controllers
             var userId = User.FindFirstValue(ClaimTypes.NameIdentifier);
             var name = User.FindFirstValue("name");
 
-            if (userId is null || name is null) {
+            if (userId is null || name is null)
+            {
                 return BadRequest("无法获取用户详细信息");
             }
 
@@ -43,7 +44,7 @@ namespace Questionservice.Controllers
             db.Questions.Add(question);
             await db.SaveChangesAsync();
 
-            await bus.PublishAsync(new QuestionCreated(question.Id, question.Title, question.Content,question.CreateAt,question.TagSlugs));
+            await bus.PublishAsync(new QuestionCreated(question.Id, question.Title, question.Content, question.CreateAt, question.TagSlugs));
 
             return Created($"/questions/{question.Id}", question); //返回201状态码，并在响应头中包含新创建资源的URL
         }
@@ -54,7 +55,7 @@ namespace Questionservice.Controllers
         /// <param name="tag"></param>
         /// <returns></returns>
         [HttpGet]
-        public async Task<ActionResult<List<Question>>> GetQuestions(string? tag) 
+        public async Task<ActionResult<List<Question>>> GetQuestions(string? tag)
         {
             var query = db.Questions.AsQueryable();
 
@@ -68,15 +69,17 @@ namespace Questionservice.Controllers
 
         //按ID返回问题
         [HttpGet("{id}")]
-        public async Task<ActionResult<Question>> GetQuestion(string id) 
+        public async Task<ActionResult<Question>> GetQuestion(string id)
         {
-            var question = await db.Questions.FindAsync(id);
+            var question = await db.Questions
+                .Include(x => x.Answers)
+                .FirstOrDefaultAsync(x => x.Id == id);
 
-            if (question is null) return NotFound();
+            if (question is null)
+                return NotFound();
 
             await db.Questions.Where(x => x.Id == id)
-                .ExecuteUpdateAsync(setters => setters.SetProperty(x => x.viewCount,
-                x => x.viewCount + 1));
+                .ExecuteUpdateAsync(setters => setters.SetProperty(x => x.ViewCount, x => x.ViewCount + 1));
 
             return question;
         }
@@ -125,6 +128,127 @@ namespace Questionservice.Controllers
 
             return NoContent();
 
+        }
+
+        [Authorize]
+        [HttpPost("{questionId}/answers")]
+        public async Task<ActionResult> PostAnswer(string questionId, CreateAnswerDto dto)
+        {
+            var question = await db.Questions.FindAsync(questionId);
+
+            if (question == null)
+            {
+                return NotFound("问题不存在");
+            }
+
+            var userId = User.FindFirstValue(ClaimTypes.NameIdentifier);
+            var name = User.FindFirstValue("name");
+
+            if (userId is null || name is null)
+                return BadRequest("无法获取用户信息");
+
+            var answer = new Models.Answer
+            {
+                Content = dto.Content,
+                UserId = userId,
+                UserDisplayName = name,
+                QuestionId = questionId
+            };
+
+            question.Answers.Add(answer);
+            question.AnswerCount++;
+
+            await db.SaveChangesAsync();
+
+            await bus.PublishAsync(new AnswerCountUpdated(questionId, question.AnswerCount));
+
+            return Created($"/questions/{questionId}", answer);
+        }
+
+        [Authorize]
+        [HttpPut("{questionId}/answers/{answerId}")]
+        public async Task<ActionResult> UpdateAnswer(string questionId, string answerId, CreateAnswerDto dto)
+        {
+            var answer = await db.Answers.FindAsync(answerId);
+
+            if (answer is null)
+                return NotFound();
+
+            if (answer.QuestionId != questionId)
+                return BadRequest("无法更新回答");
+
+            answer.Content = dto.Content;
+            answer.UpdatedAt = DateTime.UtcNow;
+
+            await db.SaveChangesAsync();
+
+            return NoContent();
+        }
+
+        [Authorize]
+        [HttpDelete("{questionId}/answers/{answerId}")]
+        public async Task<ActionResult> DeleteAnswer(string questionId, string answerId)
+        {
+            var answer = await db.Answers.FindAsync(answerId);
+
+            var question = await db.Questions.FindAsync(questionId);
+
+            if (answer is null || question is null)
+                return NotFound();
+
+            if (answer.QuestionId != questionId || answer.Accepted)
+                return BadRequest("无法删除问题");
+
+            db.Answers.Remove(answer);
+            question.AnswerCount--;
+
+            await db.SaveChangesAsync();
+
+            await bus.PublishAsync(new AnswerCountUpdated(questionId, question.AnswerCount));
+
+            return NoContent();
+        }
+
+        [Authorize]
+        [HttpPost("{questionId}/answers/{answerId}/accept")]
+        public async Task<ActionResult> AcceptAnswer(string questionId, string answerId)
+        {
+            var answer = await db.Answers.FindAsync(answerId);
+            var question = await db.Questions.FindAsync(questionId);
+
+            if (answer is null || question is null)
+                return NotFound();
+
+            if (answer.QuestionId != questionId || question.HasAcceptedAnswer)
+                return BadRequest("无法接受答案");
+
+            answer.Accepted = true;
+            question.HasAcceptedAnswer = true;
+
+            await db.SaveChangesAsync();
+
+            await bus.PublishAsync(new AnswerAccepted(questionId));
+
+            return NoContent();
+        }
+
+
+        [HttpGet("errors")]
+        public ActionResult GetErrorResponses(int code)
+        {
+            ModelState.AddModelError("问题一", "错误示例一");
+            ModelState.AddModelError("问题二", "错误示例二");
+
+            return code switch
+            {
+                400 => BadRequest("请求错误"),
+                401 => Unauthorized(),
+                403 => Forbid(),
+                404 => NotFound(),
+                500 => StatusCode(500, "服务器错误示例"),
+                //500 => throw new Exception("服务器错误"),
+                _ => ValidationProblem(ModelState)
+            };
         }
     }
 }
