@@ -1,5 +1,7 @@
+using common;
 using OpenTelemetry.Resources;
 using OpenTelemetry.Trace;
+using Polly;
 using SearchService.Data;
 using SearchService.Models;
 using System.Text.RegularExpressions;
@@ -16,22 +18,19 @@ var builder = WebApplication.CreateBuilder(args);
 // Learn more about configuring OpenAPI at https://aka.ms/aspnet/openapi
 builder.Services.AddOpenApi();
 builder.AddServiceDefaults();
+builder.Services.AddKeyCloakAuthentication();
 
-builder.Services.AddOpenTelemetry().WithTracing(TracerProviderBuilder =>
+await builder.UseWolverineWithRabbitMqAsync(opts =>
 {
-    TracerProviderBuilder.SetResourceBuilder(ResourceBuilder.CreateDefault()
-        .AddService(builder.Environment.ApplicationName))//配置OpenTelemetry跟踪提供程序，设置资源构建器以包含应用程序名称，帮助识别和区分不同服务的跟踪数据
-        .AddSource("Wolverine");//一个跟踪源，名称为 "Wolverine"，用于生成和收集与Wolverine相关的跟踪数据，以便在分布式追踪系统中进行分析和监控
-});
-
-builder.Host.UseWolverine(opts =>
-{
-    opts.UseRabbitMqUsingNamedConnection("messaging").AutoProvision();//配置Wolverine使用RabbitMQ作为消息传递机制，指定连接名称为 "messaging"，并启用自动配置功能，以便在应用程序启动时自动设置所需的RabbitMQ资源（如交换机、队列等）
-    opts.ListenToRabbitQueue("questions.search",cfg=>
+    opts.ListenToRabbitQueue("questions.search", cfg =>
     {
-        cfg.BindExchange("questions");//配置Wolverine监听名为 "questions.search" 的RabbitMQ队列，并将其绑定到名为 "questions" 的交换机，以便接收和处理来自该交换机的消息
+        cfg.BindExchange("questions");
     });
+
+    opts.ApplicationAssembly = typeof(Program).Assembly;
 });
+
+
 
 
 var typesenseUri=builder.Configuration["services:typesense:typesense:0"];
@@ -51,6 +50,8 @@ builder.Services.AddTypesenseClient(config =>
         new(uri.Host,uri.Port.ToString(),uri.Scheme),
     };
 });
+
+
 
 
 var app = builder.Build();

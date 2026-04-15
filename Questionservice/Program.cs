@@ -1,8 +1,14 @@
+using common;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.IdentityModel.Tokens;
 using OpenTelemetry.Resources;
 using OpenTelemetry.Trace;
+using Polly;
 using Questionservice.Data;
 using Questionservice.Services;
+using RabbitMQ.Client;
+using RabbitMQ.Client.Exceptions;
+using System.Net.Sockets;
 using Wolverine;
 using Wolverine.RabbitMQ;
 
@@ -16,28 +22,18 @@ builder.Services.AddOpenApi();
 builder.AddServiceDefaults();//添加Aspire服务默认配置，包括注册服务发现、健康检查等功能
 builder.Services.AddMemoryCache();
 builder.Services.AddScoped<TagService>();//将TagService注册为Scoped服务，这意味着每个HTTP请求将获得一个新的TagService实例，适用于需要在请求范围内维护状态的服务
-
-builder.Services.AddAuthentication()//添加身份验证服务，使应用程序能够处理用户身份验证和授权
-    .AddKeycloakJwtBearer(serviceName: "keycloak", realm: "overflow", options =>//配置Keycloak JWT Bearer身份验证选项，指定服务名称为 "keycloak"，领域（realm）为 "overflow"，并通过options参数进行进一步的配置
-    {
-        options.RequireHttpsMetadata = false;//在开发环境中，允许使用HTTP协议进行身份验证元数据的获取，通常在生产环境中应设置为true以确保安全性
-        options.Audience = "overflow";//设置JWT令牌的受众（Audience）为 "overflow"，这意味着只有当令牌的受众与 "overflow" 匹配时，才会被认为是有效的，从而确保只有授权的客户端能够访问受保护的资源
-    });
+builder.Services.AddKeyCloakAuthentication();
 
 builder.AddNpgsqlDbContext<QuestionDbContext>("questionDB");//添加Npgsql数据库上下文，配置QuestionDbContext以使用PostgreSQL数据库进行数据访问和操作
 
-builder.Services.AddOpenTelemetry().WithTracing(TracerProviderBuilder =>
+
+
+await builder.UseWolverineWithRabbitMqAsync(opts =>
 {
-    TracerProviderBuilder.SetResourceBuilder(ResourceBuilder.CreateDefault()
-        .AddService(builder.Environment.ApplicationName))//配置OpenTelemetry跟踪提供程序，设置资源构建器以包含应用程序名称，帮助识别和区分不同服务的跟踪数据
-        .AddSource("Wolverine");//一个跟踪源，名称为 "Wolverine"，用于生成和收集与Wolverine相关的跟踪数据，以便在分布式追踪系统中进行分析和监控
+    opts.PublishAllMessages().ToRabbitExchange("questions");
+    opts.ApplicationAssembly = typeof(Program).Assembly;
 });
 
-builder.Host.UseWolverine(opts =>
-{
-    opts.UseRabbitMqUsingNamedConnection("messaging").AutoProvision();//配置Wolverine使用RabbitMQ作为消息传递机制，指定连接名称为 "messaging"，并启用自动配置功能，以便在应用程序启动时自动设置所需的RabbitMQ资源（如交换机、队列等）
-    opts.PublishAllMessages().ToRabbitExchange("questions");//配置Wolverine将所有消息发布到名为 "questions" 的RabbitMQ交换机，以便其他服务可以订阅和处理这些消息
-});
 
 var app = builder.Build();
 
@@ -49,6 +45,8 @@ if (app.Environment.IsDevelopment())
 
 app.UseHttpsRedirection();
 
+// 必须先启用身份验证中间件，再启用授权中间件
+app.UseAuthentication();
 app.UseAuthorization();
 
 app.MapControllers();//映射控制器路由，使应用程序能够处理来自客户端的HTTP请求，并将其路由到相应的控制器方法进行处理
